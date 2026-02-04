@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>分析結果 - {{ result.ticker if result else 'Error' }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #1b242e; }
+        .score-box { font-size: 2.5rem; font-weight: bold; }
+        /* 台股習慣：紅漲(買)、綠跌(賣) */
+        .positive { color: #dc3545; } 
+        .negative { color: #198754; } 
+    </style>
+</head>
+<body class="container py-5">
+    <a href="/" class="btn btn-outline-secondary mb-3">← 返回搜尋</a>
+
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% else %}
+
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-white fw-bold">📈 股價走勢圖 (K線 + 均線)</div>
+            <div class="card-body p-0">
+                {{ plot_div | safe }}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-dark text-white">技術面分析 (Technical)</div>
+                    <div class="card-body">
+                        
+                        {% if result.ml_prob %}
+                        <div class="alert {{ 'alert-danger' if result.ml_prob > 50 else 'alert-success' }} text-center mb-3 shadow-sm">
+                            <h5 class="mb-0 fw-bold">🤖 AI 模型預測明日上漲機率</h5>
+                            <div style="font-size: 2.5rem; font-weight: bold;">
+                                {{ result.ml_prob }}%
+                            </div>
+                            <small class="text-muted">(基於隨機森林 Random Forest 演算法)</small>
+                        </div>
+                        {% endif %}
+                        
+                        {% if result.backtest %}
+                        <div class="card mb-3 border-secondary">
+                            <div class="card-body py-2">
+                                <h6 class="card-title text-center text-muted mb-2">📊 歷史回測報告 (過去一年)</h6>
+                                <div class="row text-center">
+                                    <div class="col">
+                                        <small>策略勝率</small><br>
+                                        <span class="fw-bold fs-5 {{ 'text-danger' if result.backtest.win_rate > 50 else 'text-success' }}">
+                                            {{ result.backtest.win_rate }}%
+                                        </span>
+                                    </div>
+                                    <div class="col border-start border-end">
+                                        <small>總報酬率</small><br>
+                                        <span class="fw-bold fs-5 {{ 'text-danger' if result.backtest.total_return > 0 else 'text-success' }}">
+                                            {{ result.backtest.total_return }}%
+                                        </span>
+                                    </div>
+                                    <div class="col">
+                                        <small>交易次數</small><br>
+                                        <span class="fw-bold fs-5">{{ result.backtest.total_trades }} 次</span>
+                                    </div>
+                                </div>
+                                <div class="text-center mt-1">
+                                    <small class="text-muted" style="font-size: 0.8rem;">
+                                        *策略：{{ result.backtest.strategy_name }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h3 class="m-0 text-primary fw-bold">{{ result.ticker }}</h3>
+                            
+                            <a href="{{ url_for('add_to_watchlist', ticker=result.ticker) }}" 
+                               class="btn btn-outline-primary shadow-sm">
+                                ➕ 加入自選
+                            </a>
+                        </div>
+                        <p class="fs-4">股價：<span class="fw-bold">{{ result.price }}</span></p>
+                        
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item d-flex justify-content-between">
+                                漲跌幅
+                                <span class="{{ 'positive' if result.change_pct > 0 else 'negative' }}">
+                                    {{ result.change_pct }}%
+                                </span>
+                            </li>
+                            
+                            <li class="list-group-item d-flex justify-content-between">
+                                RSI (14)
+                                <span class="fw-bold 
+                                    {{ 'text-danger' if result.rsi > 70 else ('text-success' if result.rsi < 30 else 'text-dark') }}">
+                                    {{ result.rsi }}
+                                </span>
+                            </li>
+                            
+                            <li class="list-group-item d-flex justify-content-between">
+                                MACD 趨勢
+                                <small class="text-muted">{{ result.macd_status }}</small>
+                            </li>
+
+                            <li class="list-group-item d-flex justify-content-between">
+                                量能倍數
+                                <span class="fw-bold">{{ result.vol_ratio }} 倍</span>
+                            </li>
+                            
+                            <li class="list-group-item d-flex justify-content-between">
+                                量能訊號
+                                {% if result.is_breakout %}
+                                    <span class="badge bg-danger">🔥 爆量突破</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">無訊號</span>
+                                {% endif %}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 mb-4">
+                
+                <div class="card border-primary mb-3">
+                    <div class="card-header bg-primary text-white">AI 情緒分析 (Sentiment)</div>
+                    <div class="card-body text-center">
+                        <p class="text-muted">Gemini 對新聞與籌碼的綜合評分 (-1 ~ +1)</p>
+                        {% if result.ai_score >= 0.2 %}
+                            <div class="score-box text-danger">
+                                ⬆ {{ result.ai_score }}
+                            </div>
+                            <p class="text-danger fw-bold mb-0">🔥 偏多 (趨勢明確)</p>
+
+                        {% elif result.ai_score <= -0.2 %}
+                            <div class="score-box text-success">
+                                ⬇ {{ result.ai_score }}
+                            </div>
+                            <p class="text-success fw-bold mb-0">🥶 偏空 (趨勢轉弱)</p>
+
+                        {% else %}
+                            <div class="score-box text-secondary">
+                                ➖ {{ result.ai_score }}
+                            </div>
+                            <p class="text-secondary fw-bold mb-0">⚖️ 中立 (震盪/訊號不明)</p>
+                        {% endif %}
+                        
+                        <hr>
+                        <p class="card-text text-start">
+                            <strong>AI 總評：</strong><br>
+                            {{ result.ai_comment }}
+                        </p>
+                    </div>
+                    <div class="card-footer text-center">
+                        <strong>綜合建議：</strong> {{ result.signal }}
+                    </div>
+                </div>
+
+                {% if result.chips %}
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <strong>💰 三大法人籌碼 (近5日累計)</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col">
+                                <small class="text-muted">外資</small><br>
+                                <span class="fs-5 fw-bold {{ 'positive' if result.chips.foreign_total > 0 else 'negative' }}">
+                                    {{ result.chips.foreign_total }} 張
+                                </span>
+                            </div>
+                            <div class="col border-start border-end">
+                                <small class="text-muted">投信</small><br>
+                                <span class="fs-5 fw-bold {{ 'positive' if result.chips.trust_total > 0 else 'negative' }}">
+                                    {{ result.chips.trust_total }} 張
+                                </span>
+                            </div>
+                            <div class="col">
+                                <small class="text-muted">自營商</small><br>
+                                <span class="fs-5 fw-bold {{ 'positive' if result.chips.dealer_total > 0 else 'negative' }}">
+                                    {{ result.chips.dealer_total }} 張
+                                </span>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-center">
+                            <small class="text-secondary">{{ result.chips.status_text }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+            </div>
+        </div>
+
+    {% endif %}
+</body>
+</html>
