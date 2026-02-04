@@ -21,8 +21,7 @@ def analyze_sentiment(stock_name, news_list, tech_data, chip_data=None):
 
     # 使用你指定的 gemini-2.5-flash
     model_name = current_app.config.get('GEMINI_MODEL_NAME')
-    if not model_name:
-        model_name = 'gemini-1.5-flash' # 保底
+    
 
     genai.configure(api_key=api_key)
 
