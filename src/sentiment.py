@@ -41,7 +41,7 @@ def analyze_sentiment(stock_name, news_list, tech_data, chip_data=None):
     prompt = f"""
     你是一位嚴格的台股分析師。請根據數據進行評分。
     
-    【評分邏輯】：
+    【評分邏輯參考範例】：
     1. 利多+技術強+法人買 -> 0.8 (強多)
     2. 利空+破線+外資賣 -> -0.8 (強空)
     3. 盤整+無量 -> 0.0 (觀望)
