@@ -158,6 +158,46 @@
                     </div>
                 </div>
 
+                <div class="card mb-4 shadow-sm border-0">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">🎯 雙均線策略訊號</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            
+                            <div class="col-md-8 border-end-md"> <p class="card-text text-muted mb-2">策略檢查清單：</p>
+                                <div class="d-flex flex-wrap gap-2 mb-3 mb-md-0">
+                                    {% for reason in result.signal_msg.split('|') %}
+                                        {% if '✅' in reason %}
+                                            <span class="badge bg-success-subtle text-success border border-success p-2 rounded-pill">
+                                                {{ reason }}
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary p-2 rounded-pill">
+                                                {{ reason }}
+                                            </span>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4 text-center">
+                                <p class="mb-1 text-muted small">目前策略判定</p>
+                                {% if '強力買進' in result.signal %}
+                                    <h2 class="text-success fw-bold animate__animated animate__pulse animate__infinite">
+                                        🚀 強力買進
+                                    </h2>
+                                {% else %}
+                                    <h2 class="text-secondary fw-bold">
+                                        ⏸️ 觀望中
+                                    </h2>
+                                {% endif %}
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
                 {% if result.chips %}
                 <div class="card border-warning">
                     <div class="card-header bg-warning text-dark">
