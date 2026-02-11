@@ -20,9 +20,9 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # [模型設定] 這裡控制你要用哪個 Gemini 版本
-    GEMINI_MODEL_NAME = "gemini-2.5-flash"
+    #GEMINI_MODEL_NAME = "gemini-2.5-flash"
     #GEMINI_MODEL_NAME = "gemini-2.5-flash-lite"  # 較小的模型，速度更快但可能效果稍差
-    #GEMINI_MODEL_NAME = "gemini-3-flash-preview"  # 最新的 Gemini 3 模型，效果最好但速度較慢 
+    GEMINI_MODEL_NAME = "gemini-3-flash-preview"  # 最新的 Gemini 3 模型，效果最好但速度較慢 
     
     # [策略設定] 這裡定義什麼叫「爆量」
     # 1.5 代表成交量是過去 5 日均量的 1.5 倍
