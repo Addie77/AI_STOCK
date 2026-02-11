@@ -22,7 +22,7 @@ def get_institutional_chips(stock_id):
             "dataset": "TaiwanStockInstitutionalInvestorsBuySell", 
             "data_id": clean_id,                                 
             "start_date": start_date,
-            "token": "" # 如果你有申請 FinMind Token，可以填在這裡，會更穩定
+            "token": os.getenv('FINMIND_API_TOKEN', '') # 如果你有申請 FinMind Token，可以填在這裡，會更穩定
         }
         
         # 🔥【關鍵修正】加入 Headers 偽裝成瀏覽器
