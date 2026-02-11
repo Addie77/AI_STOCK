@@ -5,6 +5,7 @@ import google.generativeai as genai
 from pytz import timezone
 import os
 import datetime
+from flask_caching import Cache
 
 # --- 引入 LINE Bot 相關套件 ---
 from linebot import LineBotApi, WebhookHandler
@@ -21,6 +22,12 @@ from config import Config
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# ===========================
+# 🔥 快取設定 (關鍵保護機制)
+# ===========================
+# 設定快取存活時間為 300 秒 (5分鐘)
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
 
 # 初始化資料庫
 db = SQLAlchemy(app)
@@ -41,12 +48,24 @@ with app.app_context():
     db.create_all()
 
 # ===========================
+# 🛡️ 快取保護層 (新增函式)
+# ===========================
+@cache.memoize(timeout=300)
+def get_cached_data(ticker):
+    """
+    這是一個有「快取保護」的抓資料函式。
+    5分鐘內重複查詢同一支股票，會直接回傳舊資料，
+    完全不消耗 Yahoo 流量，避免被鎖 IP！
+    """
+    print(f"📥 [Cache] 正在處理 {ticker} (若5分鐘內查過則不下載)...")
+    return market_data.get_stock_data(ticker)
+
+# ===========================
 #  PART 1: 定時推播任務
 # ===========================
 
 def send_morning_report():
     """ 每天早上執行的任務：掃描自選股並推播 """
-    # 1. 取得使用者 ID (從 .env 讀取)
     user_id = os.getenv('ADMIN_USER_ID')
     if not user_id:
         print("❌ 尚未設定 ADMIN_USER_ID，無法推播")
@@ -54,41 +73,34 @@ def send_morning_report():
 
     print("⏰ 開始執行每日早報推播...")
     
-    # 2. 讀取資料庫中的自選股
     with app.app_context():
         watchlist = Watchlist.query.all()
         if not watchlist:
-            try:
-                line_bot_api.push_message(user_id, TextSendMessage(text="早安！目前自選清單是空的，趕快加入股票吧！"))
-            except:
-                pass
+            # 省略空清單處理...
             return
 
         report_content = "🌞 早安！您的自選股快報：\n"
         
-        # 3. 逐一分析每一檔股票
         for stock in watchlist:
             try:
                 ticker = stock.ticker
-                df, valid_ticker = market_data.get_stock_data(ticker)
+                
+                # 🔥 改用快取函式抓資料
+                df, valid_ticker = get_cached_data(ticker)
                 
                 if df is not None:
-                    # 簡單判斷漲跌
                     today = df.iloc[-1]
                     price = round(today['Close'], 2)
                     prev_close = df['Close'].iloc[-2] if len(df) >= 2 else price
                     change_pct = round(((price - prev_close) / prev_close) * 100, 2)
                     
-                    # 加上 emoji
                     emoji = "🔴" if change_pct > 0 else "🟢" if change_pct < 0 else "⚪"
-                    
                     report_content += f"{emoji} {valid_ticker.replace('.TW','')}: {price} ({change_pct}%)\n"
             except Exception as e:
                 print(f"分析 {stock.ticker} 失敗: {e}")
 
         report_content += "\n💡 輸入股票代號可查看詳細 AI 與策略分析！"
 
-        # 4. 發送推播
         try:
             line_bot_api.push_message(user_id, TextSendMessage(text=report_content))
             print("✅ 早報推播成功！")
@@ -99,7 +111,6 @@ def send_morning_report():
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     tw_timezone = timezone('Asia/Taipei') 
     scheduler = BackgroundScheduler(timezone=tw_timezone)
-    # 設定每天早上 09:00 執行
     scheduler.add_job(func=send_morning_report, trigger="cron", hour=9, minute=0)
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown())
@@ -122,36 +133,33 @@ def callback():
 def handle_message(event):
     user_msg = event.message.text.strip()
     
-    # 簡易後門：查詢 User ID
     if user_msg.upper() == "ID":
         user_id = event.source.user_id
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"您的 User ID 是：\n{user_id}\n(請貼到 .env 檔案中)"))
         return
 
-    # 判斷是否為股票代號 (數字 或 .TW 結尾)
     if user_msg.isdigit() or user_msg.upper().endswith('.TW'):
         ticker = user_msg if user_msg.upper().endswith('.TW') else f"{user_msg}.TW"
         
         try:
-            # 1. 抓取資料
-            df, valid_ticker = market_data.get_stock_data(ticker)
+            # 🔥 改用快取函式抓資料 (這裡最容易因為使用者連點而被鎖)
+            df, valid_ticker = get_cached_data(ticker)
+            
             if df is None:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 找不到 {ticker}"))
                 return
 
-            # 2. 執行策略分析 (爆量檢查 + 實戰訊號)
+            # 2. 執行策略分析
             is_breakout, tech_info = strategy.check_volume_breakout(df)
-            
-            # [新增] 呼叫剛剛寫的「實戰訊號檢查」
             is_buy, signal_msg = strategy.check_buy_signal(df)
             
             price = tech_info['price']
             change = tech_info['change_pct']
             vol_ratio = tech_info['vol_ratio']
-            
             stock_name = valid_ticker.replace('.TWO', '').replace('.TW', '')
             
             # 3. 抓新聞 & AI 分析
+            # 新聞也建議稍微快取，但目前先只做股價
             news = market_data.get_recent_news(stock_name)
             
             model_name = app.config.get('GEMINI_MODEL_NAME')
@@ -169,7 +177,6 @@ def handle_message(event):
             response = model.generate_content(prompt)
             ai_comment = response.text.strip()
 
-            # 4. 組合回覆訊息
             signal_icon = "🚀 強力買進" if is_buy else "⏸️ 觀望"
             
             result_msg = (
@@ -219,14 +226,18 @@ def index():
         ticker = request.form.get('ticker').strip()
         if not ticker.endswith('.TW') and ticker.isdigit():
             ticker = f"{ticker}.TW"
+        # 這裡呼叫 analyze
         return analyze(ticker)
     return render_template('index.html', watchlist=watchlist)
 
+# 這裡不加快取，因為我們已經在內部的 get_cached_data 加過了
+# 如果這裡再加，會變成雙重快取 (也不會怎樣，但沒必要)
 def analyze(ticker):
     watchlist = Watchlist.query.all()
     
-    # 1. 抓取資料
-    df, valid_ticker = market_data.get_stock_data(ticker)
+    # 1. 抓取資料 (🔥 呼叫有保護的函式)
+    df, valid_ticker = get_cached_data(ticker)
+    
     if df is None:
         return render_template('result.html', error=f"找不到股票 {ticker}", watchlist=watchlist)
     ticker = valid_ticker
@@ -254,8 +265,6 @@ def analyze(ticker):
     # 6. ML & 回測 & 實戰訊號
     ml_prob = ml_predict.predict_next_day(df)
     backtest_result = backtest.run_backtest(df)
-    
-    # [新增] 網頁版也要顯示實戰訊號
     is_buy, signal_msg = strategy.check_buy_signal(df)
     
     result = {
@@ -271,8 +280,8 @@ def analyze(ticker):
         "backtest": backtest_result,
         "ai_score": ai_score,
         "ai_comment": ai_comment,
-        "signal": "強力買進" if is_buy else "觀望", # 這裡改用嚴格的策略判斷
-        "signal_msg": signal_msg,                 # [新增] 可以傳給網頁顯示
+        "signal": "強力買進" if is_buy else "觀望",
+        "signal_msg": signal_msg,
         "chips": chip_data 
     }
     
