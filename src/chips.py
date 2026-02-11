@@ -16,13 +16,13 @@ def get_institutional_chips(stock_id):
         # 設定日期範圍 (抓最近 30 天，確保有足夠交易日)
         today = datetime.date.today()
         start_date = (today - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-        
+        api_token = os.getenv('FINMIND_API_TOKEN', '')
         url = "https://api.finmindtrade.com/api/v4/data"
         params = {
             "dataset": "TaiwanStockInstitutionalInvestorsBuySell", 
             "data_id": clean_id,                                 
             "start_date": start_date,
-            "token": os.getenv('FINMIND_API_TOKEN', '') # 如果你有申請 FinMind Token，可以填在這裡，會更穩定
+            "token": api_token # 如果你有申請 FinMind Token，可以填在這裡，會更穩定
         }
         
         # 🔥【關鍵修正】加入 Headers 偽裝成瀏覽器
